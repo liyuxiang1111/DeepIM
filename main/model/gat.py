@@ -152,17 +152,17 @@ class SpecialSpmmFunction(torch.autograd.Function):
     def forward(ctx, indices, values, shape, b):
         assert indices.requires_grad == False
         a = torch.sparse_coo_tensor(indices, values, shape)
-        ctx.save_for_backward(a, b)
+        ctx.save_for_backward(a, b) # 保存必要张量用于反向传播
         ctx.N = shape[0]
         return torch.matmul(a, b)
 
     @staticmethod
     def backward(ctx, grad_output):
-        a, b = ctx.saved_tensors
-        grad_values = grad_b = None
+        a, b = ctx.saved_tensors # 获取保存的必要张量
+        grad_values = grad_b = None # 初始化梯度张量
         if ctx.needs_input_grad[1]:
             grad_a_dense = grad_output.matmul(b.t())
-            edge_idx = a._indices()[0, :] * ctx.N + a._indices()[1, :]
+            edge_idx = a._indices()[0, :] * ctx.N + a._indices()[1, :] # 将二维坐标装换位一维索引
             grad_values = grad_a_dense.view(-1)[edge_idx]
         if ctx.needs_input_grad[3]:
             grad_b = a.t().matmul(grad_output)
@@ -176,7 +176,16 @@ class SpecialSpmm(nn.Module):
     
 class SpGraphAttentionLayer(nn.Module):
     """
-    Sparse version GAT layer, similar to https://arxiv.org/abs/1710.10903
+    稀疏图注意力层（Sparse Graph Attention Layer），基于论文《Graph Attention Networks》(GAT) 的稀疏矩阵优化实现。
+    该层通过稀疏矩阵运算实现高效的注意力机制，适用于大规模图结构数据，支持归纳学习（Inductive Learning）和直推式学习（Transductive Learning）。
+    核心思想：通过自注意力机制动态计算邻接节点的重要性权重，无需预先定义图结构或矩阵分解。
+
+    参数:
+        in_features (int): 输入特征维度
+        out_features (int): 输出特征维度（单头注意力）
+        dropout (float): 注意力系数的Dropout比例
+        alpha (float): LeakyReLU的负斜率参数
+        concat (bool): 若为True，使用ELU激活函数（中间层）；若为False，不激活（最后一层）
     """
 
     def __init__(self, in_features, out_features, dropout, alpha, concat=True):
@@ -199,11 +208,11 @@ class SpGraphAttentionLayer(nn.Module):
     def forward(self, input, adj):
         dv = 'cuda' if input.is_cuda else 'cpu'
 
-        N = input.size()[0]
+        N = input.size()[0] # 节点数量
         if adj.layout == torch.sparse_coo:
-            edge = adj.indices()
+            edge = adj.indices() # 稀疏矩阵直接获取索引
         else:
-            edge = adj.nonzero().t()
+            edge = adj.nonzero().t() # 稠密矩阵转换为边索引
 
         h = torch.mm(input, self.W)
         # h: N x out
@@ -217,12 +226,14 @@ class SpGraphAttentionLayer(nn.Module):
         assert not torch.isnan(edge_e).any()
         # edge_e: E
 
+        # 计算归一化因子
         e_rowsum = self.special_spmm(edge, edge_e, torch.Size([N, N]), torch.ones(size=(N,1), device=dv))
         # e_rowsum: N x 1
 
         edge_e = self.dropout(edge_e)
         # edge_e: E
 
+        # 消息传递与聚合
         h_prime = self.special_spmm(edge, edge_e, torch.Size([N, N]), h)
         assert not torch.isnan(h_prime).any()
         # h_prime: N x out

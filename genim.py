@@ -33,7 +33,7 @@ CUDA_LAUNCH_BLOCKING=1
 
 parser = argparse.ArgumentParser(description="GenIM")
 datasets = ['jazz', 'cora_ml', 'power_grid', 'netscience', 'random5']
-parser.add_argument("-d", "--dataset", default="cora_ml", type=str,
+parser.add_argument("-d", "--dataset", default="jazz", type=str,
                     help="one of: {}".format(", ".join(sorted(datasets))))
 diffusion = ['IC', 'LT', 'SIS']
 parser.add_argument("-dm", "--diffusion_model", default="LT", type=str,

@@ -28,6 +28,7 @@ class GINDataLoader():
     split_name: 数据集划分方式 ('fold10' 或 'rand')
     fold_idx: 交叉验证的折索引（0-9）
     split_ratio: 随机划分时的训练集比例
+
     """
     def __init__(self,
                  dataset,
